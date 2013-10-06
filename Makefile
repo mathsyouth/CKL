@@ -7,7 +7,8 @@ CFLAGS		= -O2 -I.
 OBJECTS		= lib/CKL.o \
 		  lib/BV.o \
 		  lib/Build.o \
-		  lib/TriDist.o
+		  lib/TriDist.o \
+	      lib/svm.o
 
 CLEAN		= $(OBJECTS) lib/libCKL.a include/*.h
 
@@ -29,6 +30,9 @@ lib/Build.o: src/Build.cpp
 	$(CC) $(CFLAGS) -c src/Build.cpp -o lib/Build.o
 lib/TriDist.o: src/TriDist.cpp
 	$(CC) $(CFLAGS) -c src/TriDist.cpp -o lib/TriDist.o
+lib/svm.o: src/svm.cpp
+	$(CC) $(CFLAGS) -c src/svm.cpp -o lib/svm.o
+
 
 clean:
 	/bin/rm -f $(CLEAN)

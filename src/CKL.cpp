@@ -1512,6 +1512,12 @@ Transform::Transform(const CKL_REAL R_[3][3], const CKL_REAL T_[3])
   VcV(T, T_);
 }
 
+Transform::Transform()
+{
+  Videntity(T);
+  Midentity(R);
+}
+
 
 int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
                           CKL_REAL R11[3][3], CKL_REAL T11[3], CKL_REAL R12[3][3], CKL_REAL T12[3], CKL_Model *o1,
@@ -1881,6 +1887,8 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
   classifier.setScaler(computeScaler(data));
 
   classifier.learn(data);
+
+  classifier.save("model.txt");
 
 
   std::vector<Transform> support_transforms_positive;

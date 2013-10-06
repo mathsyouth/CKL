@@ -391,7 +391,7 @@ struct Transform
   CKL_REAL T[3];
 
   Transform(const CKL_REAL R_[3][3], const CKL_REAL T_[3]);
-  Transform() {}
+  Transform();
 };
 
 std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Model* o2,
