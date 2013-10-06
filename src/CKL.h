@@ -340,6 +340,39 @@ int CKL_Tolerance(CKL_ToleranceResult *res,
 #endif
 
 
+//----------------------------------------------------------------------------
+//
+// CKL_Continuous Collision Checking
+//
+//
+// Declare a CKL_ContinuousCollisionResult and pass its pointer to collect
+// continuous collision information.
+//
+// The algorithm returns whether the collision happens during the continuous
+// motion, in terms of the linear interpolation between the starting and end
+// configurations of the objects. 
+//
+// If a collision happens, this routine returns the time of contact
+// and the in-contact (or in small collision) configurations of the objects.
+// This routine uses the simplest manner to check continuous collision: sample N
+// configurations along the motion and check the collisions in order.
+//
+// The precision of the time_of_contact is determined by N, the number of samples
+// along the motion.
+// (R11, T11) is the starting configuration of o1 and (R12, T12) is the end configuration
+// of o1;
+// (R21, T21) is the starting configuration of o2 and (R22, T22) is the end configuration
+// of o2.
+//
+//----------------------------------------------------------------------------
+int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
+                          CKL_REAL R11[3][3], CKL_REAL T11[3], CKL_REAL R12[3][3], CKL_REAL T12[3], CKL_Model *o1,
+                          CKL_REAL R21[3][3], CKL_REAL T21[3], CKL_REAL R22[3][3], CKL_REAL T22[3], CKL_Model *o2,
+                          int flag = CKL_ALL_CONTACTS,
+                          int N = 50);
+
+
+
 
 //----------------------------------------------------------------------------
 //
@@ -352,21 +385,25 @@ int CKL_Tolerance(CKL_ToleranceResult *res,
 // The algorithm returns the global penetration depth and the related contact point/normal.
 //
 //----------------------------------------------------------------------------
-
 struct Transform
 {
   CKL_REAL R[3][3];
   CKL_REAL T[3];
+
+  Transform(const CKL_REAL R_[3][3], const CKL_REAL T_[3]);
+  Transform() {}
 };
 
 std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Model* o2,
                                                          std::size_t n_samples,
-                                                         std::size_t knn_k);
+                                                         std::size_t knn_k,
+                                                         CKL_REAL margin = 0);
 
 
 int CKL_PenetrationDepth(CKL_PenetrationDepthResult* res,
                          CKL_REAL R1[3][3], CKL_REAL T1[3], CKL_Model *o1,
-                         CKL_REAL R2[3][3], CKL_REAL T2[3], CKL_Model *o2);
+                         CKL_REAL R2[3][3], CKL_REAL T2[3], CKL_Model *o2,
+                         const std::vector<Transform>& contact_space);
                          
 
 

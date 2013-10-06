@@ -47,6 +47,8 @@
 #include "MatVec.h"
 #include "GetTime.h"
 #include "TriDist.h"
+#include "Classifier.h"
+#include "NearestNeighbors.h"
 
 namespace CKL
 {
@@ -1363,7 +1365,499 @@ int CKL_Tolerance(CKL_ToleranceResult *res,
 #endif
 
 
+Transform::Transform(const CKL_REAL R_[3][3], const CKL_REAL T_[3])
+{
+  McM(R, R_);
+  VcV(T, T_);
+}
 
+
+int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
+                          CKL_REAL R11[3][3], CKL_REAL T11[3], CKL_REAL R12[3][3], CKL_REAL T12[3], CKL_Model *o1,
+                          CKL_REAL R21[3][3], CKL_REAL T21[3], CKL_REAL R22[3][3], CKL_REAL T22[3], CKL_Model *o2,
+                          int flag,
+                          int N)
+{
+  // convert matrix to quaternion
+  CKL_REAL quat11[4], quat12[4], quat21[4], quat22[4];
+  QRotM(quat11, R11);
+  QRotM(quat12, R12);
+  QRotM(quat21, R21);
+  QRotM(quat22, R22);
+
+  // temporary matrices, vertors and quaternions for interpolation
+  CKL_REAL R1[3][3];
+  CKL_REAL T1[3];
+  CKL_REAL quat1[4];
+
+  CKL_REAL R2[3][3];
+  CKL_REAL T2[3];
+  CKL_REAL quat2[4];
+
+  // delta translation
+  CKL_REAL delta_T1[3];
+  CKL_REAL delta_T2[3];
+  VmV(delta_T1, T12, T11);
+  VmV(delta_T2, T22, T21);
+
+  
+  for(std::size_t i = 0; i < N; ++i)
+  {
+    CKL_REAL t = i / (CKL_REAL)(N - 1);
+
+    // rotation interpolation
+    Slerp(quat1, quat11, quat12, t);
+    Slerp(quat2, quat21, quat22, t);
+
+    // quaternion to matrix
+    MRotQ(R1, quat1);
+    MRotQ(R2, quat2);
+
+    // translation interpolation
+    VRay(T1, T11, delta_T1, t);
+    VRay(T2, T21, delta_T2, t);
+
+    CKL_CollideResult cresult;
+    CKL_Collide(&cresult,
+                R1, T1, o1,
+                R2, T2, o2,
+                CKL_FIRST_CONTACT);
+
+    if(cresult.NumPairs() > 0)
+    {
+      result->is_collide = true;
+      result->time_of_contact = t;
+      McM(result->R1, R1);
+      VcV(result->T1, T1);
+      McM(result->R2, R2);
+      VcV(result->T2, T2);
+
+      return CKL_OK;
+    }
+  }
+
+  result->is_collide = false;
+
+  return CKL_OK;
+}
+
+void sampleSE3Euler(Vecnf<6>& v, CKL_REAL trans_lower[3], CKL_REAL trans_upper[3])
+{
+  CKL_REAL randv0 = (CKL_REAL)(rand() / double(RAND_MAX));
+  CKL_REAL randv1 = (CKL_REAL)(rand() / double(RAND_MAX));
+  CKL_REAL randv2 = (CKL_REAL)(rand() / double(RAND_MAX));
+
+  v[0] = trans_lower[0] + randv0 * (trans_upper[0] - trans_lower[0]);
+  v[1] = trans_lower[1] + randv1 * (trans_upper[1] - trans_lower[1]);
+  v[2] = trans_lower[2] + randv2 * (trans_upper[2] - trans_lower[2]);
+
+  CKL_REAL quat[4];
+  CKL_REAL randq0 = (CKL_REAL)(rand() / double(RAND_MAX));
+  CKL_REAL randq1 = (CKL_REAL)(rand() / double(RAND_MAX));
+  CKL_REAL randq2 = (CKL_REAL)(rand() / double(RAND_MAX));
+
+  CKL_REAL x0 = randq0;
+  
+  CKL_REAL r1 = sqrt(1 - x0), r2 = sqrt(x0);
+  CKL_REAL t1 = 2 * M_PI * randq1, t2 = 2 * M_PI * randq2;
+  CKL_REAL c1 = cos(t1), s1 = sin(t1);
+  CKL_REAL c2 = cos(t2), s2 = sin(t2);
+
+  quat[0] = s1 * r1;
+  quat[1] = c1 * r1;
+  quat[2] = s2 * r2;
+  quat[3] = c2 * r2;
+
+  CKL_REAL euler[3];
+  EulerRotQuat(euler, quat);
+
+  v[3] = euler[0];
+  v[4] = euler[1];
+  v[5] = euler[2];
+}
+
+
+void ModelRadiusAndCenter(CKL_REAL& radius, CKL_REAL center[3], const CKL_Model* o)
+{
+  CKL_REAL bmin[3], bmax[3];
+  bmin[0] = bmin[1] = bmin[2] = std::numeric_limits<CKL_REAL>::max();
+  bmax[0] = bmax[1] = bmax[2] = -std::numeric_limits<CKL_REAL>::max();
+
+  for(int i = 0; i < o->num_tris; ++i)
+  {
+    Tri tri = o->tris[i];
+    for(int j = 0; j < 3; ++j)
+    {
+      if(tri.p1[j] < bmin[j]) bmin[j] = tri.p1[j];
+      if(tri.p1[j] > bmax[j]) bmax[j] = tri.p1[j];
+    }
+
+    for(int j = 0; j < 3; ++j)
+    {
+      if(tri.p2[j] < bmin[j]) bmin[j] = tri.p2[j];
+      if(tri.p2[j] > bmax[j]) bmax[j] = tri.p2[j];
+    }
+
+    for(int j = 0; j < 3; ++j)
+    {
+      if(tri.p3[j] < bmin[j]) bmin[j] = tri.p3[j];
+      if(tri.p3[j] > bmax[j]) bmax[j] = tri.p3[j];
+    }
+  }
+
+  CKL_REAL diag[3];
+  VmV(diag, bmax, bmin);
+  radius = 0.5 * Vlength(diag);
+
+  VInterp(center, bmin, bmax, 0.5);
+}
+
+CKL_REAL ModelVolume(const CKL_Model* o)
+{
+  CKL_REAL vol = 0;
+  for(int i = 0; i < o->num_tris; ++i)
+  {
+    const Tri& tri = o->tris[i];
+    CKL_REAL cross[3];
+    VcrossV(cross, tri.p1, tri.p2);
+    CKL_REAL d_six_vol = VdotV(cross, tri.p3);
+    vol += d_six_vol;
+  }
+
+  return vol / 6;
+}
+
+void ModelCoM(CKL_REAL com[3], const CKL_Model* o)
+{
+  CKL_REAL vol = 0;
+  Videntity(com);
+  for(int i = 0; i < o->num_tris; ++i)
+  {
+    const Tri& tri = o->tris[i];
+    CKL_REAL cross[3];
+    VcrossV(cross, tri.p1, tri.p2);
+    CKL_REAL d_six_vol = VdotV(cross, tri.p3);
+    vol += d_six_vol;
+    CKL_REAL ave[3];
+    VpV(ave, tri.p1, tri.p2);
+    VpV(ave, ave, tri.p3);
+    VxS(ave, ave, d_six_vol);
+    VpV(com, com, ave);
+  }
+
+  VxS(com, com, 1.0/(vol * 4));
+}
+
+void computeMomentofInertia(CKL_REAL C[3][3], const CKL_Model* o)
+{
+  for(int i = 0; i < 3; ++i)
+    for(int j = 0; j < 3; ++j)
+      C[i][j] = 0;
+
+  CKL_REAL C_canonical[3][3] = {{1/60.0, 1/120.0, 1/120.0},
+                                {1/120.0, 1/60.0, 1/120.0},
+                                {1/120.0, 1/120.0, 1/60.0}};
+
+  for(int i = 0; i < o->num_tris; ++i)
+  {
+    const Tri& tri = o->tris[i];
+    CKL_REAL cross[3];
+    VcrossV(cross, tri.p1, tri.p2);
+    CKL_REAL d_six_vol = VdotV(cross, tri.p3);
+
+    CKL_REAL A[3][3];
+    VscMrow(A, tri.p1, tri.p2, tri.p3);
+    CKL_REAL AT[3][3];
+    MTcM(AT, A);
+    CKL_REAL ATxC[3][3];
+    CKL_REAL ATxCxA[3][3];
+    MxM(ATxC, AT, C_canonical);
+    MxM(ATxCxA, ATxC, A);
+    MxS(ATxCxA, ATxCxA, d_six_vol);
+    MpM(C, C, ATxCxA);    
+  }
+
+  CKL_REAL trace_C = C[0][0] + C[1][1] + C[2][2];
+
+  C[0][0] = trace_C - C[0][0];
+  C[0][1] = - C[0][1];
+  C[0][2] = - C[0][2];
+
+  C[1][0] = - C[1][0];
+  C[1][1] = trace_C - C[1][1];
+  C[1][2] = - C[1][2];
+
+  C[2][0] = - C[2][0];
+  C[2][1] = - C[2][1];
+  C[2][2] = trace_C - C[2][2];
+}
+
+void ModelMomentOfInertiaRelatedToCoM(CKL_REAL C[3][3], const CKL_Model* o)
+{
+  computeMomentofInertia(C, o);
+  CKL_REAL com[3];
+  ModelCoM(com, o);
+  CKL_REAL V = ModelVolume(o);
+  
+  C[0][0] -= V * (com[1] * com[1] + com[2] * com[2]);
+  C[0][1] += V * com[0] * com[1];
+  C[0][2] += V * com[0] * com[2];
+  C[1][0] += V * com[1] * com[0];
+  C[1][1] -= V * (com[0] * com[0] + com[2] * com[2]);
+  C[1][2] += V * com[1] * com[2];
+  C[2][0] += V * com[2] * com[0];
+  C[2][1] += V * com[2] * com[1];
+  C[2][2] -= V * (com[0] * com[0] + com[1] * com[1]);
+}
+
+// tf2 = tf1 * tf
+Transform relativeTransform(const Transform& tf1, const Transform& tf2)
+{
+  Transform tf;
+  CKL_REAL R1inv[3][3];
+  MTcM(R1inv, tf1.R);
+  MxM(tf.R, R1inv, tf2.R);
+  MxV(tf.T, R1inv, tf2.T);
+  VmV(tf.T, tf.T, tf1.T);
+  return tf;
+}
+
+// tf2 = tf * tf1;
+Transform relativeTransform2(const Transform& tf1, const Transform& tf2)
+{
+  Transform tf;
+  MxMT(tf.R, tf2.R, tf1.R);
+  CKL_REAL t1rotated[3];
+  MxV(t1rotated, tf.R, tf1.T);
+  VmV(tf.T, tf2.T, t1rotated);
+  return tf;  
+}
+
+
+struct DefaultDistanceFunctor : public DistanceFunctor<Transform>
+{
+public:
+  const CKL_Model* o;
+
+  CKL_REAL rot_x_weight, rot_y_weight, rot_z_weight;
+
+  DefaultDistanceFunctor()
+  {
+    o = NULL;
+    rot_x_weight = rot_y_weight = rot_z_weight = 1;
+  }
+
+  DefaultDistanceFunctor(const CKL_Model* o_)
+  {
+    o = o_;
+    init();
+  }
+
+  void init()
+  {
+    rot_x_weight = rot_y_weight = rot_z_weight = 1;
+
+    if(o)
+    {
+      CKL_REAL V = ModelVolume(o);
+      CKL_REAL C[3][3];
+      ModelMomentOfInertiaRelatedToCoM(C, o);
+      CKL_REAL eigen_values[3];
+      CKL_REAL eigen_vectors[3][3];
+
+      Meigen(eigen_vectors, eigen_values, C);
+      rot_x_weight = eigen_values[0] * 4 / V;
+      rot_y_weight = eigen_values[1] * 4 / V;
+      rot_z_weight = eigen_values[2] * 4 / V;
+
+      std::cout << rot_x_weight << " " << rot_y_weight << " " << rot_z_weight << std::endl;
+    }
+  }
+  
+  virtual double dist(const Transform& tf1, const Transform& tf2) const
+  {
+    Transform tf = relativeTransform2(tf1, tf2);
+    CKL_REAL quat[4];
+    QRotM(quat, tf.R);
+    CKL_REAL d =
+        rot_x_weight * quat[1] * quat[1]
+      + rot_y_weight * quat[2] * quat[2]
+      + rot_z_weight * quat[3] * quat[3]
+      + tf.T[0] * tf.T[0]
+      + tf.T[1] * tf.T[1]
+      + tf.T[2] * tf.T[2];
+
+    return d;
+  }
+
+  
+};
+
+
+std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Model* o2,
+                                                         std::size_t n_samples, std::size_t knn_k,
+                                                         CKL_REAL margin)
+{
+  CKL_REAL r1, r2;
+  CKL_REAL c1[3], c2[3];
+  ModelRadiusAndCenter(r1, c1, o1);
+  ModelRadiusAndCenter(r2, c2, o2);
+  CKL_REAL r = r1 + r2 + margin;
+
+  CKL_REAL trans_lower[3] = {-r, -r, -r};
+  CKL_REAL trans_upper[3] = {r, r, r};
+
+  std::vector<Item<6> > data(n_samples);
+  for(std::size_t i = 0; i < n_samples; ++i)
+  {
+    Vecnf<6> q;
+    sampleSE3Euler(q, trans_lower, trans_upper);
+
+    CKL_REAL trans[3] = {q[0], q[1], q[2]};
+    CKL_REAL euler[3] = {q[3], q[4], q[5]};
+
+    CKL_REAL R[3][3];
+    CKL_REAL T[3];
+    CKL_REAL rotated_c2[3];
+    
+    MRotEuler(R, euler);
+    VpV(trans, trans, c1);
+    MxV(rotated_c2, R, c2);
+    VmV(T, trans, rotated_c2);
+
+
+    CKL_CollideResult cresult;
+    CKL_REAL R1[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    CKL_REAL T1[3] = {0, 0, 0};
+    CKL_Collide(&cresult,
+                R1, T1, o1,
+                R, T, o2);
+
+    data[i] = Item<6>(q, (cresult.NumPairs() > 0));
+  }
+
+  Classifier<6> classifier;
+  classifier.setScaler(computeScaler(data));
+
+  classifier.learn(data);
+
+
+  std::vector<Transform> support_transforms_positive;
+  std::vector<Transform> support_transforms_negative;
+  
+  std::vector<Item<6> > svs = classifier.getSupportVectors();
+  for(std::size_t i = 0; i < svs.size(); ++i)
+  {
+    const Vecnf<6>&q  = svs[i].q;
+
+    CKL_REAL trans[3] = {q[0], q[1], q[2]};
+    CKL_REAL euler[3] = {q[3], q[4], q[5]};
+    
+    CKL_REAL R[3][3];
+    CKL_REAL T[3];
+    CKL_REAL rotated_c2[3];
+    
+    MRotEuler(R, euler);
+    VpV(trans, trans, c1);
+    MxV(rotated_c2, R, c2);
+    VmV(T, trans, rotated_c2);
+    
+    Transform tf;
+    McM(tf.R, R);
+    VcV(tf.T, T);
+    
+    if(svs[i].label)
+    {
+      support_transforms_positive.push_back(tf);
+    }
+    else
+    {
+      support_transforms_negative.push_back(tf);
+    }
+  }
+
+
+  DefaultDistanceFunctor distance_func(o2);
+  NearestNeighbors<Transform> knn_solver_positive;
+  NearestNeighbors<Transform> knn_solver_negative;
+
+  knn_solver_positive.setDistanceFunctor(&distance_func);
+  knn_solver_negative.setDistanceFunctor(&distance_func);
+
+  
+  knn_solver_positive.add(support_transforms_positive);
+  knn_solver_negative.add(support_transforms_negative);
+
+  std::vector<Transform> contact_vectors;
+  Transform tf_identity;
+  Midentity(tf_identity.R);
+  Videntity(tf_identity.T);
+  
+  
+  for(std::size_t i = 0; i < support_transforms_positive.size(); ++i)
+  {
+    std::vector<Transform> nbh;
+    knn_solver_negative.nearestK(support_transforms_positive[i], knn_k, nbh);
+
+    for(std::size_t j = 0; j < nbh.size(); ++j)
+    {
+      CKL_ContinuousCollideResult result;
+      CKL_ContinuousCollide(&result,
+                            tf_identity.R, tf_identity.T, tf_identity.R, tf_identity.T, o1,
+                            nbh[j].R, nbh[j].T, support_transforms_positive[i].R, support_transforms_positive[i].T, o2,
+                            100);
+      //std::cout << result.time_of_contact << std::endl;
+      
+      contact_vectors.push_back(Transform(result.R2, result.T2));
+    }
+  }
+
+  for(std::size_t i = 0; i < support_transforms_negative.size(); ++i)
+  {
+    std::vector<Transform> nbh;
+    knn_solver_positive.nearestK(support_transforms_negative[i], knn_k, nbh);
+
+    for(std::size_t j = 0; j < nbh.size(); ++j)
+    {
+      CKL_ContinuousCollideResult result;
+      CKL_ContinuousCollide(&result,
+                        tf_identity.R, tf_identity.T, tf_identity.R, tf_identity.T, o1,
+                        nbh[j].R, nbh[j].T, support_transforms_negative[i].R, support_transforms_negative[i].T, o2,
+                        100);
+
+      //std::cout << result.time_of_contact << std::endl;
+
+      contact_vectors.push_back(Transform(result.R2, result.T2));
+    }
+  }
+
+  return contact_vectors;
+}
+
+
+
+int CKL_PenetrationDepth(CKL_PenetrationDepthResult* res,
+                         CKL_REAL R1[3][3], CKL_REAL T1[3], CKL_Model* o1,
+                         CKL_REAL R2[3][3], CKL_REAL T2[3], CKL_Model* o2,
+                         const std::vector<Transform>& contact_space)
+{
+  DefaultDistanceFunctor distance_func(o2);
+  NearestNeighbors<Transform> knn_solver;
+  knn_solver.setDistanceFunctor(&distance_func);
+  knn_solver.add(contact_space);
+
+  Transform tf1(R1, T1), tf2(R2, T2);
+  Transform tf = relativeTransform2(tf1, tf2);
+  Transform tf_nearest = knn_solver.nearest(tf);
+  
+  MxM(res->R, tf1.R, tf_nearest.R);
+  MxV(res->T, tf1.R, tf_nearest.T);
+  VpV(res->T, res->T, tf1.T);
+
+  res->pd_value = sqrt(distance_func.dist(tf_nearest, tf2));
+
+  return CKL_OK;
+}
 
 
 

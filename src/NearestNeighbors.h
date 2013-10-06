@@ -53,11 +53,19 @@ namespace CKL
     \li Removing an element from the datastructure O(n).
 */
 template<typename _T>
+struct DistanceFunctor
+{
+  virtual double dist(const _T&, const _T&) const
+  {
+    return 0;
+  }
+};
+
+
+template<typename _T>
 class NearestNeighbors
 {
 public:
-
-  typedef double (*DistanceFunction)(const _T&, const _T&);
 
   virtual void clear(void)
   {
@@ -94,7 +102,7 @@ public:
     double dmin = 0.0;
     for (std::size_t i = 0 ; i < sz ; ++i)
     {
-      double distance = distFun_(data_[i], data);
+      double distance = distFun_->dist(data_[i], data);
       if (pos == sz || dmin > distance)
       {
         pos = i;
@@ -115,12 +123,12 @@ public:
     if (nbh.size() > k)
     {
       std::partial_sort(nbh.begin(), nbh.begin() + k, nbh.end(),
-                        ElemSort(data, distFun_));
+                        ElemSort(data, *distFun_));
       nbh.resize(k);
     }
     else
     {
-      std::sort(nbh.begin(), nbh.end(), ElemSort(data, distFun_));
+      std::sort(nbh.begin(), nbh.end(), ElemSort(data, *distFun_));
     }
   }
 
@@ -128,9 +136,9 @@ public:
   {
     nbh.clear();
     for (std::size_t i = 0 ; i < data_.size() ; ++i)
-      if (distFun_(data_[i], data) <= radius)
+      if (distFun_->dist(data_[i], data) <= radius)
         nbh.push_back(data_[i]);
-    std::sort(nbh.begin(), nbh.end(), ElemSort(data, distFun_));
+    std::sort(nbh.begin(), nbh.end(), ElemSort(data, *distFun_));
   }
 
   std::size_t size(void) const
@@ -143,30 +151,35 @@ public:
     data = data_;
   }
 
+  void setDistanceFunctor(DistanceFunctor<_T>* distFun)
+  {
+    distFun_ = distFun;
+  }
+
 protected:
 
   /// @brief The data elements stored in this structure */
   std::vector<_T>   data_;
 
-  /// @brief The used distance function
-  DistanceFunction distFun_;
+  /// @brief The used distance functor
+  DistanceFunctor<_T>* distFun_;
 
 
 private:
 
   struct ElemSort
   {
-    ElemSort(const _T &e, const DistanceFunction &df) : e_(e), df_(df)
+    ElemSort(const _T &e, const DistanceFunctor<_T> &df) : e_(e), df_(df)
     {
     }
 
     bool operator()(const _T &a, const _T &b) const
     {
-      return df_(a, e_) < df_(b, e_);
+      return df_.dist(a, e_) < df_.dist(b, e_);
     }
 
     const _T &e_;
-    const DistanceFunction &df_;
+    const DistanceFunctor<_T> &df_;
   };
 
 };

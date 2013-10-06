@@ -121,6 +121,13 @@ inline void McolcV(CKL_REAL Vr[3], const CKL_REAL M[3][3], int c)
   Vr[2] = M[2][c];
 }
 
+inline void VscMrow(CKL_REAL Mr[3][3], const CKL_REAL V1[3], const CKL_REAL V2[3], const CKL_REAL V3[3])
+{
+  Mr[0][0] = V1[0]; Mr[0][1] = V1[1]; Mr[0][2] = V1[2];
+  Mr[1][0] = V2[0]; Mr[1][1] = V2[1]; Mr[1][2] = V2[2];
+  Mr[2][0] = V3[0]; Mr[2][1] = V3[1]; Mr[2][2] = V3[2];
+}
+
 inline void McolcMcol(CKL_REAL Mr[3][3], int cr, const CKL_REAL M[3][3], int c)
 {
   Mr[0][cr] = M[0][c];
@@ -421,6 +428,28 @@ inline void VxS(CKL_REAL Vr[3], const CKL_REAL V[3], CKL_REAL s)
   Vr[2] = V[2] * s;
 }
 
+inline void MxS(CKL_REAL Mr[3][3], const CKL_REAL M[3][3], CKL_REAL s)
+{
+  Mr[0][0] = M[0][0] * s; Mr[0][1] = M[0][1] * s; Mr[0][2] = M[0][2] * s;
+  Mr[1][0] = M[1][0] * s; Mr[1][1] = M[1][1] * s; Mr[1][2] = M[1][2] * s;
+  Mr[2][0] = M[2][0] * s; Mr[2][1] = M[2][1] * s; Mr[2][2] = M[2][2] * s;
+}
+
+inline void MmM(CKL_REAL Mr[3][3], const CKL_REAL M1[3][3], const CKL_REAL M2[3][3])
+{
+  Mr[0][0] = M1[0][0] - M2[0][0];   Mr[0][1] = M1[0][1] - M2[0][1];   Mr[0][2] = M1[0][2] - M2[0][2];
+  Mr[1][0] = M1[1][0] - M2[1][0];   Mr[1][1] = M1[1][1] - M2[1][1];   Mr[1][2] = M1[1][2] - M2[1][2];
+  Mr[2][0] = M1[2][0] - M2[2][0];   Mr[2][1] = M1[2][1] - M2[2][1];   Mr[2][2] = M1[2][2] - M2[2][2];
+}
+
+inline void MpM(CKL_REAL Mr[3][3], const CKL_REAL M1[3][3], const CKL_REAL M2[3][3])
+{
+  Mr[0][0] = M1[0][0] + M2[0][0];   Mr[0][1] = M1[0][1] + M2[0][1];   Mr[0][2] = M1[0][2] + M2[0][2];
+  Mr[1][0] = M1[1][0] + M2[1][0];   Mr[1][1] = M1[1][1] + M2[1][1];   Mr[1][2] = M1[1][2] + M2[1][2];
+  Mr[2][0] = M1[2][0] + M2[2][0];   Mr[2][1] = M1[2][1] + M2[2][1];   Mr[2][2] = M1[2][2] + M2[2][2];
+}
+
+
 inline void MRotZ(CKL_REAL Mr[3][3], CKL_REAL t)
 {
   Mr[0][0] = cos(t);
@@ -653,6 +682,174 @@ void inline Meigen(CKL_REAL vout[3][3], CKL_REAL dout[3], CKL_REAL a[3][3])
 
   return;
 }
+
+
+inline void QRotM(CKL_REAL destQuat[4], CKL_REAL srcMatrix[3][3])
+{
+  const int next[3] = {1, 2, 0};
+
+  CKL_REAL trace = srcMatrix[0][0] + srcMatrix[1][1] + srcMatrix[2][2];
+  CKL_REAL root;
+
+  if(trace > 0.0)
+  {
+    // |w| > 1/2, may as well choose w > 1/2
+    root = sqrt(trace + 1.0);  // 2w
+    destQuat[0] = 0.5 * root;
+    root = 0.5 / root;  // 1/(4w)
+    destQuat[1] = (srcMatrix[2][1] - srcMatrix[1][2])*root;
+    destQuat[2] = (srcMatrix[0][2] - srcMatrix[2][0])*root;
+    destQuat[3] = (srcMatrix[1][0] - srcMatrix[0][1])*root;
+  }
+  else
+  {
+    // |w| <= 1/2
+    int i = 0;
+    if(srcMatrix[1][1] > srcMatrix[0][0])
+    {
+      i = 1;
+    }
+    if(srcMatrix[2][2] > srcMatrix[i][i])
+    {
+      i = 2;
+    }
+    int j = next[i];
+    int k = next[j];
+
+    root = sqrt(srcMatrix[i][i] - srcMatrix[j][j] - srcMatrix[k][k] + 1.0);
+    CKL_REAL* quat[3] = { &destQuat[1], &destQuat[2], &destQuat[3] };
+    *quat[i] = 0.5 * root;
+    root = 0.5 / root;
+    destQuat[0] = (srcMatrix[k][j] - srcMatrix[j][k]) * root;
+    *quat[j] = (srcMatrix[j][i] + srcMatrix[i][j]) * root;
+    *quat[k] = (srcMatrix[k][i] + srcMatrix[i][k]) * root;
+  }
+}
+
+inline void Quatinverse(CKL_REAL destInvQuat[4], CKL_REAL srcQuat[4])
+{
+  CKL_REAL sqr_length = srcQuat[0] * srcQuat[0] + srcQuat[1] * srcQuat[1] + srcQuat[2] * srcQuat[2] + srcQuat[3] * srcQuat[3];
+  if(sqr_length > 0)
+  {
+    CKL_REAL inv_length = 1 / sqrt(sqr_length);
+    destInvQuat[0] = srcQuat[0] * inv_length;
+    destInvQuat[1] = -srcQuat[1] * inv_length;
+    destInvQuat[2] = -srcQuat[2] * inv_length;
+    destInvQuat[3] = -srcQuat[3] * inv_length;
+  }
+  else
+  {
+    destInvQuat[0] = srcQuat[0];
+    destInvQuat[1] = -srcQuat[1];
+    destInvQuat[2] = -srcQuat[2];
+    destInvQuat[3] = -srcQuat[3];
+  }
+}
+
+inline void QuatxQuat(CKL_REAL destQuat[4], CKL_REAL quat1[4], CKL_REAL quat2[4])
+{
+
+    destQuat[0] = quat1[0] * quat2[0] - quat1[1] * quat2[1] - quat1[2] * quat2[2] - quat1[3] * quat2[3];
+    destQuat[1] = quat1[0] * quat2[1] + quat1[1] * quat2[0] + quat1[2] * quat2[3] - quat1[3] * quat2[2];
+    destQuat[2] = quat1[0] * quat2[2] - quat1[1] * quat2[3] + quat1[2] * quat2[0] + quat1[3] * quat2[1];
+    destQuat[3] = quat1[0] * quat2[3] + quat1[1] * quat2[2] - quat1[2] * quat2[1] + quat1[3] * quat2[0];
+}
+
+inline CKL_REAL QuatDot(CKL_REAL quat1[4], CKL_REAL quat2[4])
+{
+  return quat1[0] * quat2[0] + quat1[1] * quat2[1] + quat1[2] * quat2[2] + quat1[3] * quat2[3];
+}
+
+inline void VInterp(CKL_REAL Vr[3], CKL_REAL V1[3], CKL_REAL V2[3], CKL_REAL t)
+{
+  Vr[0] = V1[0] + t * (V2[0] - V1[0]);
+  Vr[1] = V1[1] + t * (V2[1] - V1[1]);
+  Vr[2] = V1[2] + t * (V2[1] - V1[2]);
+}
+
+inline void VRay(CKL_REAL Vr[3], CKL_REAL V1[3], CKL_REAL ray[3], CKL_REAL t)
+{
+  Vr[0] = V1[0] + t * ray[0];
+  Vr[1] = V1[1] + t * ray[1];
+  Vr[2] = V1[2] + t * ray[2];
+}
+
+inline void MRotEuler(CKL_REAL destMatrix[3][3], CKL_REAL euler[3])
+{
+    CKL_REAL ci(cos(euler[0]));
+    CKL_REAL cj(cos(euler[1]));
+    CKL_REAL ch(cos(euler[2]));
+    CKL_REAL si(sin(euler[0]));
+    CKL_REAL sj(sin(euler[1]));
+    CKL_REAL sh(sin(euler[2]));
+    CKL_REAL cc = ci * ch;
+    CKL_REAL cs = ci * sh;
+    CKL_REAL sc = si * ch;
+    CKL_REAL ss = si * sh;
+
+    destMatrix[0][0] = cj * ch;
+    destMatrix[0][1] = sj * sc - cs;
+    destMatrix[0][2] = sj * cc + ss;
+    destMatrix[1][0] = cj * sh;
+    destMatrix[1][1] = sj * ss + cc;
+    destMatrix[1][2] = sj * cs - sc;
+    destMatrix[2][0] = -sj;
+    destMatrix[2][1] = cj * si;
+    destMatrix[2][2] = cj * ci;
+}
+
+inline void EulerRotQuat(CKL_REAL destEuler[3], CKL_REAL quat[4])
+{
+  CKL_REAL R[3][3];
+  MRotQ(R, quat);
+  CKL_REAL a = atan2(R[1][0], R[0][0]);
+  CKL_REAL b = asin(-R[2][0]);
+  CKL_REAL c = atan2(R[2][1], R[2][2]);
+
+  if(b == M_PI * 0.5)
+  {
+    if(a > 0)
+      a -= M_PI;
+    else
+      a += M_PI;
+    if(c > 0)
+      c -= M_PI;
+    else
+      c += M_PI;
+  }
+
+  destEuler[0] = a;
+  destEuler[1] = b;
+  destEuler[2] = c;
+}
+
+inline void Slerp(CKL_REAL destQuat[4], CKL_REAL srcQuat1[4], CKL_REAL srcQuat2[4], CKL_REAL t)
+{
+  CKL_REAL cs = QuatDot(srcQuat1, srcQuat2);
+  CKL_REAL angle = acos(cs);
+
+  if(fabs(angle) > 0)
+  {
+    CKL_REAL sn = sin(angle);
+    CKL_REAL invSn = 1.0 / sn;
+    CKL_REAL tAngle = t * angle;
+    CKL_REAL coeff0 = sin(angle - tAngle) * invSn;
+    CKL_REAL coeff1 = sin(tAngle) * invSn;
+
+    destQuat[0] = coeff0 * srcQuat1[0] + coeff1 * srcQuat2[0];
+    destQuat[1] = coeff0 * srcQuat1[1] + coeff1 * srcQuat2[1];
+    destQuat[2] = coeff0 * srcQuat1[2] + coeff1 * srcQuat2[2];
+    destQuat[3] = coeff0 * srcQuat1[3] + coeff1 * srcQuat2[3];
+  }
+  else
+  {
+    destQuat[0] = srcQuat1[0];
+    destQuat[1] = srcQuat1[1];
+    destQuat[2] = srcQuat1[2];
+    destQuat[3] = srcQuat1[3];
+  }
+}
+
 
 }
 

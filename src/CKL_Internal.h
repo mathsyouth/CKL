@@ -40,6 +40,7 @@
 
 #include "Tri.h"
 #include "BV.h"
+#include <limits>
 
 namespace CKL
 {
@@ -78,6 +79,7 @@ public:
   int MemUsage(int msg);  // returns model mem usage.
   // prints message to stderr if msg == TRUE
 };
+
 
 struct CollisionPair
 {
@@ -266,8 +268,28 @@ struct CKL_ToleranceResult
   }
 };
 
+struct CKL_ContinuousCollideResult
+{
+  // collision or not
+  bool is_collide;
+
+  // time of contact in [0, 1]
+  // in fact, it is a time when a very small collision happens
+  CKL_REAL time_of_contact;
+
+  // contact transform
+  CKL_REAL R1[3][3];
+  CKL_REAL T1[3];
+
+  CKL_REAL R2[3][3];
+  CKL_REAL T2[3];
+};
+
 struct CKL_PenetrationDepthResult
 {
+  CKL_REAL R[3][3];
+  CKL_REAL T[3];
+  CKL_REAL pd_value;
 };
 
 }
