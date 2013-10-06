@@ -85,6 +85,9 @@ struct CollisionPair
 {
   int id1;
   int id2;
+
+  CKL_REAL normal[3];
+  CKL_REAL point[3];
 };
 
 struct CKL_CollideResult
@@ -106,6 +109,7 @@ struct CKL_CollideResult
   
   void SizeTo(int n);
   void Add(int i1, int i2);
+  void Add(int i1, int i2, CKL_REAL contact_point[3], CKL_REAL contact_normal[3]);
   
   CKL_CollideResult();
   ~CKL_CollideResult();

@@ -53,6 +53,73 @@
 namespace CKL
 {
 
+CKL_REAL distanceToPlane(const CKL_REAL n[3], CKL_REAL t, const CKL_REAL v[3])
+{
+  return VdotV(n, v) - t;
+}
+
+
+bool buildTrianglePlane(const CKL_REAL V1[3], const CKL_REAL V2[3], const CKL_REAL V3[3], CKL_REAL n[3], CKL_REAL& t)
+{
+  CKL_REAL V2mV1[3];
+  CKL_REAL V3mV1[3];
+  VmV(V2mV1, V2, V1);
+  VmV(V3mV1, V3, V1);
+  VcrossV(n, V2mV1, V3mV1);
+  Vnormalize(n);
+  t = VdotV(n, V1);
+  return true;
+}
+
+void computeDeepestPoints(const CKL_REAL* clipped_points, std::size_t num_clipped_points,
+                          const CKL_REAL n[3], CKL_REAL t,
+                          CKL_REAL* penetration_depth,
+                          CKL_REAL* deepest_points,
+                          std::size_t* num_deepest_points)
+{
+  *num_deepest_points = 0;
+  CKL_REAL max_depth = -std::numeric_limits<CKL_REAL>::max();
+  std::size_t num_deepest_points_ = 0;
+  std::size_t num_neg = 0;
+  std::size_t num_pos = 0;
+  std::size_t num_zero = 0;
+
+  for(std::size_t i = 0; i < num_clipped_points; ++i)
+  {
+    CKL_REAL dist = -distanceToPlane(n, t, clipped_points + 3 * i);
+    if(dist > 1e-6) num_pos++;
+    else if(dist < -1e-6) num_neg++;
+    else num_zero++;
+    if(dist > max_depth)
+    {
+      max_depth = dist;
+      num_deepest_points_ = 1;
+      VcV(deepest_points + 3 * (num_deepest_points_ - 1), clipped_points + 3 * i);
+    }
+    else if(dist + 1e-6 >= max_depth)
+    {
+      num_deepest_points_++;
+      VcV(deepest_points + 3 * (num_deepest_points_ - 1), clipped_points + 3 * i);
+    }
+  }
+
+  if(max_depth < -1e-6)
+    num_deepest_points_ = 0;
+
+  if(num_zero == 0 && ((num_neg == 0) || (num_pos == 0)))
+    num_deepest_points_ = 0;
+
+  *penetration_depth = max_depth;
+  *num_deepest_points = num_deepest_points_;
+}
+
+
+
+
+
+
+
+                       
 enum BUILD_STATE
   {
     CKL_BUILD_STATE_EMPTY,     // empty state, immediately after constructor
@@ -319,6 +386,25 @@ void CKL_CollideResult::Add(int a, int b)
   num_pairs++;
 }
 
+void CKL_CollideResult::Add(int a, int b, CKL_REAL contact_point[3], CKL_REAL contact_normal[3])
+{
+  if(num_pairs >= num_pairs_alloced)
+  {
+    // allocate more
+    
+    SizeTo(num_pairs_alloced * 2 + 8);
+  }
+  
+  // now proceed as usual
+  
+  pairs[num_pairs].id1 = a;
+  pairs[num_pairs].id2 = b;
+  VcV(pairs[num_pairs].point, contact_point);
+  VcV(pairs[num_pairs].normal, contact_normal);
+  num_pairs++;
+}
+
+
 // TRIANGLE OVERLAP TEST
 
 inline CKL_REAL max(CKL_REAL a, CKL_REAL b, CKL_REAL c)
@@ -362,7 +448,11 @@ int project6(CKL_REAL *ax,
 // uses no divisions
 // works on coplanar triangles
 int TriContact(CKL_REAL *P1, CKL_REAL *P2, CKL_REAL *P3,
-               CKL_REAL *Q1, CKL_REAL *Q2, CKL_REAL *Q3)
+               CKL_REAL *Q1, CKL_REAL *Q2, CKL_REAL *Q3,
+               CKL_REAL* contact_points = NULL,
+               std::size_t* num_contact_points = NULL,
+               CKL_REAL* penetration_depth = NULL,
+               CKL_REAL* normal = NULL)
 {
 
   // One triangle is (p1,p2,p3).  Other is (q1,q2,q3).
@@ -467,6 +557,51 @@ int TriContact(CKL_REAL *P1, CKL_REAL *P2, CKL_REAL *P3,
   if(!project6(h1, p1, p2, p3, q1, q2, q3)) return 0;
   if(!project6(h2, p1, p2, p3, q1, q2, q3)) return 0;
   if(!project6(h3, p1, p2, p3, q1, q2, q3)) return 0;
+
+  if(contact_points && num_contact_points && penetration_depth && normal)
+  {
+    CKL_REAL n1[3], n2[3];
+    CKL_REAL t1, t2;
+    buildTrianglePlane(P1, P2, P3, n1, t1);
+    buildTrianglePlane(Q1, Q2, Q3, n2, t2);
+
+    CKL_REAL deepest_points1[9];
+    std::size_t num_deepest_points1 = 0;
+    CKL_REAL deepest_points2[9];
+    std::size_t num_deepest_points2 = 0;
+    CKL_REAL penetration_depth1, penetration_depth2;
+
+    CKL_REAL P[9];
+    CKL_REAL Q[9];
+    VcV(P, P1); VcV(P + 3, P2); VcV(P + 6, P3);
+    VcV(Q, Q1); VcV(Q + 3, Q2); VcV(Q + 6, Q3);
+    
+    computeDeepestPoints(Q, 3, n1, t1, &penetration_depth2, deepest_points2, &num_deepest_points2);
+    computeDeepestPoints(P, 3, n2, t2, &penetration_depth1, deepest_points1, &num_deepest_points1);
+
+    if(penetration_depth1 > penetration_depth2)
+    {
+      *num_contact_points = std::min(num_deepest_points2, (std::size_t)2);
+      for(std::size_t i = 0; i < *num_contact_points; ++i)
+      {
+        VcV(contact_points + 3 * i, deepest_points2 + 3 * i);
+      }
+
+      VcV(normal, n1);
+      *penetration_depth = penetration_depth2;
+    }
+    else
+    {
+      *num_contact_points = std::min(num_deepest_points1, (std::size_t)2);
+      for(std::size_t i = 0; i < *num_contact_points; ++i)
+      {
+        VcV(contact_points + 3 * i, deepest_points1 + 3 * i);
+      }
+
+      VxS(normal, n2, -1.0);
+      *penetration_depth = penetration_depth1;
+    }
+  }
   
   return 1;
 }
@@ -520,11 +655,17 @@ void CollideRecurse(CKL_CollideResult *res,
     MxVpV(q1, res->R, t2->p1, res->T);
     MxVpV(q2, res->R, t2->p2, res->T);
     MxVpV(q3, res->R, t2->p3, res->T);
-    if(TriContact(p1, p2, p3, q1, q2, q3))
+
+    CKL_REAL contact_point[3];
+    CKL_REAL contact_normal[3];
+    std::size_t num_contact_point = 1;
+    CKL_REAL penetration_depth;
+    
+    if(TriContact(p1, p2, p3, q1, q2, q3, contact_point, &num_contact_point, &penetration_depth, contact_normal))
     {
       // add this to result
       
-      res->Add(t1->id, t2->id);
+      res->Add(t1->id, t2->id, contact_point, contact_normal);
     }
     
     return;
