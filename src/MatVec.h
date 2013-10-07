@@ -55,9 +55,9 @@ static const CKL_REAL M_PI = (CKL_REAL)3.14159265359;
 
 inline std::ostream& operator << (std::ostream& os, const CKL_REAL M[3][3])
 {
-  os << M[0][0] << " " << M[0][1] << " " << M[0][2]
-     << M[1][0] << " " << M[1][1] << " " << M[1][2]
-     << M[2][0] << " " << M[2][1] << " " << M[2][2];
+  os << M[0][0] << " " << M[0][1] << " " << M[0][2] << std::endl;
+  os << M[1][0] << " " << M[1][1] << " " << M[1][2] << std::endl;
+  os << M[2][0] << " " << M[2][1] << " " << M[2][2];
 
   return os;
 }
@@ -522,12 +522,7 @@ inline void OGLtoMV(CKL_REAL R[3][3], CKL_REAL T[3], const double oglm[16])
   T[2] = (CKL_REAL)oglm[14];
 }
 
-// taken from quatlib, written by Richard Holloway
-static const int QX = 0;
-static const int QY = 1;
-static const int QZ = 2;
-static const int QW = 3;
-
+// Quaternion [x, y, z, w]
 inline void MRotQ(CKL_REAL destMatrix[3][3], CKL_REAL srcQuat[4])
 {
   CKL_REAL  s;
@@ -535,39 +530,34 @@ inline void MRotQ(CKL_REAL destMatrix[3][3], CKL_REAL srcQuat[4])
     wx, wy, wz,
     xx, xy, xz,
     yy, yz, zz;
-            
-  /*
-   * For unit srcQuat, just set s = 2.0; or set xs = srcQuat[QX] +
-   *   srcQuat[QX], etc.
-   */
-  
-  s = (CKL_REAL)2.0 / (srcQuat[QX] * srcQuat[QX] + srcQuat[QY] * srcQuat[QY] +
-                       srcQuat[QZ] * srcQuat[QZ] + srcQuat[QW] * srcQuat[QW]);
+              
+  s = (CKL_REAL)2.0 / (srcQuat[0] * srcQuat[0] + srcQuat[1] * srcQuat[1] +
+                       srcQuat[2] * srcQuat[2] + srcQuat[3] * srcQuat[3]);
                        
-  xs = srcQuat[QX] * s;
-  ys = srcQuat[QY] * s;
-  zs = srcQuat[QZ] * s;
-  wx = srcQuat[QW] * xs;
-  wy = srcQuat[QW] * ys;
-  wz = srcQuat[QW] * zs;
-  xx = srcQuat[QX] * xs;
-  xy = srcQuat[QX] * ys;
-  xz = srcQuat[QX] * zs;
-  yy = srcQuat[QY] * ys;
-  yz = srcQuat[QY] * zs;
-  zz = srcQuat[QZ] * zs;
+  xs = srcQuat[1] * s;
+  ys = srcQuat[2] * s;
+  zs = srcQuat[3] * s;
+  wx = srcQuat[0] * xs;
+  wy = srcQuat[0] * ys;
+  wz = srcQuat[0] * zs;
+  xx = srcQuat[1] * xs;
+  xy = srcQuat[1] * ys;
+  xz = srcQuat[1] * zs;
+  yy = srcQuat[2] * ys;
+  yz = srcQuat[2] * zs;
+  zz = srcQuat[3] * zs;
   
-  destMatrix[QX][QX] = (CKL_REAL)1.0 - (yy + zz);
-  destMatrix[QX][QY] = xy + wz;
-  destMatrix[QX][QZ] = xz - wy;
+  destMatrix[0][0] = (CKL_REAL)1.0 - (yy + zz);
+  destMatrix[1][0] = xy + wz;
+  destMatrix[2][0] = xz - wy;
   
-  destMatrix[QY][QX] = xy - wz;
-  destMatrix[QY][QY] = (CKL_REAL)1.0 - (xx + zz);
-  destMatrix[QY][QZ] = yz + wx;
+  destMatrix[0][1] = xy - wz;
+  destMatrix[1][1] = (CKL_REAL)1.0 - (xx + zz);
+  destMatrix[2][1] = yz + wx;
   
-  destMatrix[QZ][QX] = xz + wy;
-  destMatrix[QZ][QY] = yz - wx;
-  destMatrix[QZ][QZ] = (CKL_REAL)1.0 - (xx + yy);
+  destMatrix[0][2] = xz + wy;
+  destMatrix[1][2] = yz - wx;
+  destMatrix[2][2] = (CKL_REAL)1.0 - (xx + yy);
 }
 
 inline void Mqinverse(CKL_REAL Mr[3][3], CKL_REAL m[3][3])
@@ -625,51 +615,54 @@ void inline Meigen(CKL_REAL vout[3][3], CKL_REAL dout[3], CKL_REAL a[3][3])
     if(i < 3) tresh = (CKL_REAL)0.2 * sm / (n * n);
     else tresh = 0.0;
 
-    for(ip = 0; ip < n; ip++) for(iq = ip + 1; iq < n; iq++)
-                              {
-                                g = (CKL_REAL)100.0 * fabs(a[ip][iq]);
-                                if(i > 3 &&
-                                   fabs(d[ip]) + g == fabs(d[ip]) &&
-                                   fabs(d[iq]) + g == fabs(d[iq]))
-                                  a[ip][iq] = 0.0;
-                                else if(fabs(a[ip][iq]) > tresh)
-                                {
-                                  h = d[iq] - d[ip];
-                                  if(fabs(h) + g == fabs(h)) t = (a[ip][iq]) / h;
-                                  else
-                                  {
-                                    theta = (CKL_REAL)0.5 * h / (a[ip][iq]);
-                                    t = (CKL_REAL)(1.0 / (fabs(theta) + sqrt(1.0 + theta * theta)));
-                                    if(theta < 0.0) t = -t;
-                                  }
-                                  c = (CKL_REAL)1.0 / sqrt(1 + t * t);
-                                  s = t * c;
-                                  tau = s / ((CKL_REAL)1.0 + c);
-                                  h = t * a[ip][iq];
-                                  z[ip] -= h;
-                                  z[iq] += h;
-                                  d[ip] -= h;
-                                  d[iq] += h;
-                                  a[ip][iq] = 0.0;
-                                  for(j = 0; j < ip; j++)
-                                  {
-                                    ROTATE(a, j, ip, j, iq);
-                                  }
-                                  for(j = ip + 1; j < iq; j++)
-                                  {
-                                    ROTATE(a, ip, j, j, iq);
-                                  }
-                                  for(j = iq + 1; j < n; j++)
-                                  {
-                                    ROTATE(a, ip, j, iq, j);
-                                  }
-                                  for(j = 0; j < n; j++)
-                                  {
-                                    ROTATE(v, j, ip, j, iq);
-                                  }
-                                  nrot++;
-                                }
-                              }
+    for(ip = 0; ip < n; ip++)
+    {
+      for(iq = ip + 1; iq < n; iq++)
+      {
+        g = (CKL_REAL)100.0 * fabs(a[ip][iq]);
+        if(i > 3 &&
+           fabs(d[ip]) + g == fabs(d[ip]) &&
+           fabs(d[iq]) + g == fabs(d[iq]))
+          a[ip][iq] = 0.0;
+        else if(fabs(a[ip][iq]) > tresh)
+        {
+          h = d[iq] - d[ip];
+          if(fabs(h) + g == fabs(h)) t = (a[ip][iq]) / h;
+          else
+          {
+            theta = (CKL_REAL)0.5 * h / (a[ip][iq]);
+            t = (CKL_REAL)(1.0 / (fabs(theta) + sqrt(1.0 + theta * theta)));
+            if(theta < 0.0) t = -t;
+          }
+          c = (CKL_REAL)1.0 / sqrt(1 + t * t);
+          s = t * c;
+          tau = s / ((CKL_REAL)1.0 + c);
+          h = t * a[ip][iq];
+          z[ip] -= h;
+          z[iq] += h;
+          d[ip] -= h;
+          d[iq] += h;
+          a[ip][iq] = 0.0;
+          for(j = 0; j < ip; j++)
+          {
+            ROTATE(a, j, ip, j, iq);
+          }
+          for(j = ip + 1; j < iq; j++)
+          {
+            ROTATE(a, ip, j, j, iq);
+          }
+          for(j = iq + 1; j < n; j++)
+          {
+            ROTATE(a, ip, j, iq, j);
+          }
+          for(j = 0; j < n; j++)
+          {
+            ROTATE(v, j, ip, j, iq);
+          }
+          nrot++;
+        }
+      }
+    }
     for(ip = 0; ip < n; ip++)
     {
       b[ip] += z[ip];
@@ -764,7 +757,7 @@ inline void VInterp(CKL_REAL Vr[3], CKL_REAL V1[3], CKL_REAL V2[3], CKL_REAL t)
 {
   Vr[0] = V1[0] + t * (V2[0] - V1[0]);
   Vr[1] = V1[1] + t * (V2[1] - V1[1]);
-  Vr[2] = V1[2] + t * (V2[1] - V1[2]);
+  Vr[2] = V1[2] + t * (V2[2] - V1[2]);
 }
 
 inline void VRay(CKL_REAL Vr[3], CKL_REAL V1[3], CKL_REAL ray[3], CKL_REAL t)

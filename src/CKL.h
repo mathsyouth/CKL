@@ -368,7 +368,6 @@ int CKL_Tolerance(CKL_ToleranceResult *res,
 int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
                           CKL_REAL R11[3][3], CKL_REAL T11[3], CKL_REAL R12[3][3], CKL_REAL T12[3], CKL_Model *o1,
                           CKL_REAL R21[3][3], CKL_REAL T21[3], CKL_REAL R22[3][3], CKL_REAL T22[3], CKL_Model *o2,
-                          int flag = CKL_ALL_CONTACTS,
                           int N = 50);
 
 

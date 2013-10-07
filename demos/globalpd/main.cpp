@@ -3,14 +3,15 @@
 #include "MatVec.h"
 #include <vector>
 #include <string>
+#include <fstream>
 
 using namespace CKL;
 
 
-static void loadSceneFile(const std::string& filename,
-                          std::vector<std::vector<CKL_REAL> >& points_array,
-                          std::vector<std::vector<int> >& triangles_array,
-                          std::vector<std::pair<Transform, Transform> >& motions)
+void loadSceneFile(const std::string& filename,
+                   std::vector<std::vector<CKL_REAL> >& points_array,
+                   std::vector<std::vector<int> >& triangles_array,
+                   std::vector<std::pair<Transform, Transform> >& motions)
 {
   TiXmlDocument doc(filename.c_str());
   if(doc.LoadFile())
@@ -222,6 +223,7 @@ void setModel(CKL_Model* o,
 
 void scenePenetrationTest(const std::string& filename)
 {
+  srand(1);
   std::vector<std::vector<CKL_REAL> > points_array;
   std::vector<std::vector<int> > triangles_array;
   std::vector<std::pair<Transform, Transform> > motions;
@@ -235,7 +237,7 @@ void scenePenetrationTest(const std::string& filename)
   
   std::size_t KNN_K = 10;
 
-  std::vector<Transform> contact_vectors = CKL_PenetrationDepthModelLearning(m1, m2, 100000, KNN_K);
+  std::vector<Transform> contact_vectors = CKL_PenetrationDepthModelLearning(m1, m2, 10000, KNN_K);
 
   for(std::size_t frame_id = 0; frame_id < motions.size(); ++frame_id)
   {
@@ -247,8 +249,8 @@ void scenePenetrationTest(const std::string& filename)
                          contact_vectors);
     
     std::cout << "pd value " << frame_id << " " << result.pd_value << std::endl;
-    std::cout << "resolved tf translation " << result.T << std::endl;
-    std::cout << "resolved tf rotation " << result.R << std::endl;
+    std::cout << "resolved tf translation\n" << result.T << std::endl;
+    std::cout << "resolved tf rotation\n" << result.R << std::endl;
 
     CKL_CollideResult cresult;
     CKL_Collide(&cresult,
@@ -264,19 +266,68 @@ void scenePenetrationTest(const std::string& filename)
   }
 }
 
+void saveOBJFile(const char* filename, std::vector<CKL_REAL>& points, std::vector<int>& triangles)
+{
+  std::ofstream os(filename);
+  if(!os)
+  {
+    std::cerr << "file not exist" << std::endl;
+    return;
+  }
 
+  for(std::size_t i = 0; i < points.size() / 3; ++i)
+  {
+    os << "v " << points[3 * i] << " " << points[3 * i + 1] << " " << points[3 * i + 2] << std::endl;
+  }
+
+  for(std::size_t i = 0; i < triangles.size() / 3; ++i)
+  {
+    os << "f " << triangles[3 * i] + 1 << " " << triangles[3 * i + 1] + 1 << " " << triangles[3 * i + 2] + 1 << std::endl;
+  }
+
+  os.close();
+}
+
+std::string num2string(int i)
+{
+  std::string result;
+  std::ostringstream convert;
+  convert << i;
+  result = convert.str();
+  return result;
+}
+
+
+void xml2obj(const std::string& in_filename, const std::string& out_filename_base)
+{
+  std::vector<std::vector<CKL_REAL> > points_array;
+  std::vector<std::vector<int> > triangles_array;
+  std::vector<std::pair<Transform, Transform> > motions;
+  loadSceneFile(in_filename, points_array, triangles_array, motions);
+
+  std::size_t n_obj = points_array.size();
+  // save objs in local frame
+  for(std::size_t i = 0; i < n_obj; ++i)
+  {
+    std::string out_filenameL = out_filename_base + num2string(i+1) + "L.obj";
+    saveOBJFile(out_filenameL.c_str(), points_array[i], triangles_array[i]);
+  }
+}
 
 int main()
 {
 
   std::string filename1("Model_1.xml");
+  xml2obj("Model_1.xml", "Model_1");
   scenePenetrationTest(filename1);
 
-  std::string filename2("Model_4.xml");
-  scenePenetrationTest(filename2);
+  //std::string filename2("Model_4.xml");
+  //xml2obj("Model_4.xml", "Model_4");
+  //scenePenetrationTest(filename2);
 
-  std::string filename3("Model_5.xml");
-  scenePenetrationTest(filename3);
+  //std::string filename3("Model_5.xml");
+  //xml2obj("Model_5.xml", "Model_5");
+  //scenePenetrationTest(filename3);
 
   
 }

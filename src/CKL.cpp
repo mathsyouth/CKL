@@ -656,16 +656,19 @@ void CollideRecurse(CKL_CollideResult *res,
     MxVpV(q2, res->R, t2->p2, res->T);
     MxVpV(q3, res->R, t2->p3, res->T);
 
-    CKL_REAL contact_point[3];
-    CKL_REAL contact_normal[3];
-    std::size_t num_contact_point = 1;
+    CKL_REAL contact_point[6];
+    CKL_REAL contact_normal[6];
+    std::size_t num_contact_point;
     CKL_REAL penetration_depth;
     
     if(TriContact(p1, p2, p3, q1, q2, q3, contact_point, &num_contact_point, &penetration_depth, contact_normal))
     {
       // add this to result
-      
-      res->Add(t1->id, t2->id, contact_point, contact_normal);
+
+      for(int j = 0; j < num_contact_point; ++j)
+      {
+        res->Add(t1->id, t2->id, contact_point + 3 * j, contact_normal + 3 * j);
+      }
     }
     
     return;
@@ -1522,7 +1525,6 @@ Transform::Transform()
 int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
                           CKL_REAL R11[3][3], CKL_REAL T11[3], CKL_REAL R12[3][3], CKL_REAL T12[3], CKL_Model *o1,
                           CKL_REAL R21[3][3], CKL_REAL T21[3], CKL_REAL R22[3][3], CKL_REAL T22[3], CKL_Model *o2,
-                          int flag,
                           int N)
 {
   // convert matrix to quaternion
@@ -1560,6 +1562,7 @@ int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
     MRotQ(R1, quat1);
     MRotQ(R2, quat2);
 
+
     // translation interpolation
     VRay(T1, T11, delta_T1, t);
     VRay(T2, T21, delta_T2, t);
@@ -1569,7 +1572,7 @@ int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
                 R1, T1, o1,
                 R2, T2, o2,
                 CKL_FIRST_CONTACT);
-
+    
     if(cresult.NumPairs() > 0)
     {
       result->is_collide = true;
@@ -1584,6 +1587,7 @@ int CKL_ContinuousCollide(CKL_ContinuousCollideResult *result,
   }
 
   result->is_collide = false;
+  result->time_of_contact = 1.001;
 
   return CKL_OK;
 }
@@ -1817,7 +1821,7 @@ public:
       rot_y_weight = eigen_values[1] * 4 / V;
       rot_z_weight = eigen_values[2] * 4 / V;
 
-      std::cout << rot_x_weight << " " << rot_y_weight << " " << rot_z_weight << std::endl;
+      std::cout << "rotation weight " << rot_x_weight << " " << rot_y_weight << " " << rot_z_weight << std::endl;
     }
   }
   
@@ -1872,13 +1876,13 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
     MxV(rotated_c2, R, c2);
     VmV(T, trans, rotated_c2);
 
-
     CKL_CollideResult cresult;
     CKL_REAL R1[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     CKL_REAL T1[3] = {0, 0, 0};
     CKL_Collide(&cresult,
                 R1, T1, o1,
-                R, T, o2);
+                R, T, o2,
+                CKL_FIRST_CONTACT);
 
     data[i] = Item<6>(q, (cresult.NumPairs() > 0));
   }
@@ -1897,7 +1901,7 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
   std::vector<Item<6> > svs = classifier.getSupportVectors();
   for(std::size_t i = 0; i < svs.size(); ++i)
   {
-    const Vecnf<6>&q  = svs[i].q;
+    const Vecnf<6>&q = svs[i].q;
 
     CKL_REAL trans[3] = {q[0], q[1], q[2]};
     CKL_REAL euler[3] = {q[3], q[4], q[5]};
@@ -1911,18 +1915,11 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
     MxV(rotated_c2, R, c2);
     VmV(T, trans, rotated_c2);
     
-    Transform tf;
-    McM(tf.R, R);
-    VcV(tf.T, T);
-    
+    Transform tf(R, T);    
     if(svs[i].label)
-    {
       support_transforms_positive.push_back(tf);
-    }
     else
-    {
       support_transforms_negative.push_back(tf);
-    }
   }
 
 
@@ -1932,16 +1929,12 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
 
   knn_solver_positive.setDistanceFunctor(&distance_func);
   knn_solver_negative.setDistanceFunctor(&distance_func);
-
   
   knn_solver_positive.add(support_transforms_positive);
   knn_solver_negative.add(support_transforms_negative);
 
   std::vector<Transform> contact_vectors;
-  Transform tf_identity;
-  Midentity(tf_identity.R);
-  Videntity(tf_identity.T);
-  
+  Transform tf_identity;  
   
   for(std::size_t i = 0; i < support_transforms_positive.size(); ++i)
   {
@@ -1955,7 +1948,8 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
                             tf_identity.R, tf_identity.T, tf_identity.R, tf_identity.T, o1,
                             nbh[j].R, nbh[j].T, support_transforms_positive[i].R, support_transforms_positive[i].T, o2,
                             100);
-      //std::cout << result.time_of_contact << std::endl;
+
+      // std::cout << result.time_of_contact << std::endl;
       
       contact_vectors.push_back(Transform(result.R2, result.T2));
     }
@@ -1970,11 +1964,11 @@ std::vector<Transform> CKL_PenetrationDepthModelLearning(CKL_Model* o1, CKL_Mode
     {
       CKL_ContinuousCollideResult result;
       CKL_ContinuousCollide(&result,
-                        tf_identity.R, tf_identity.T, tf_identity.R, tf_identity.T, o1,
-                        nbh[j].R, nbh[j].T, support_transforms_negative[i].R, support_transforms_negative[i].T, o2,
-                        100);
+                            tf_identity.R, tf_identity.T, tf_identity.R, tf_identity.T, o1,
+                            support_transforms_negative[i].R, support_transforms_negative[i].T, nbh[j].R, nbh[j].T, o2,
+                            100);
 
-      //std::cout << result.time_of_contact << std::endl;
+      // std::cout << result.time_of_contact << std::endl;
 
       contact_vectors.push_back(Transform(result.R2, result.T2));
     }
@@ -2003,7 +1997,7 @@ int CKL_PenetrationDepth(CKL_PenetrationDepthResult* res,
   MxV(res->T, tf1.R, tf_nearest.T);
   VpV(res->T, res->T, tf1.T);
 
-  res->pd_value = sqrt(distance_func.dist(tf_nearest, tf2));
+  res->pd_value = sqrt(distance_func.dist(Transform(res->R, res->T), tf2));
 
   return CKL_OK;
 }
