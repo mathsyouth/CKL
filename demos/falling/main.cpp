@@ -41,7 +41,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include <GL/glut.h>
+#include <GLUT/glut.h>
 #include "model.h"
 #include "CKL.h"
 #include "MatVec.h"

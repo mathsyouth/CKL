@@ -4,8 +4,8 @@ GL_INCPATH = -I/usr/local/include/
 GL_LIBPATH = -L/usr/local/lib/ -L/usr/X11R6/lib/
 GL_LIBS  =  -lglut -lGLU -lGL -lXext -lXmu -lXi -lX11
 
-XML_INCPATH = -I/usr/include
-XML_LIBPATH = -L/usr/lib/
+XML_INCPATH = -I./tinyxml
+XML_LIBPATH = -L./tinyxml
 XML_LIBS = -ltinyxml
 
 

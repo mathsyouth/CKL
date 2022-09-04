@@ -50,7 +50,6 @@ II. Layout of Files
 
  CKL_v1.3/
    Makefile           Unix makefile to build CKL library
-   CKL.dsw CKL.dsp    MS VC++ 5.0 workspace and project files for CKL
 
    src/
      CKL source
@@ -68,7 +67,6 @@ II. Layout of Files
                      
    demos/
      Makefile         Unix makefile for both demos
-     demos.dsw        MS VC++ 5.0 workspace for demos
  
      falling/         source and project files
      sample/          "      "   "       "
@@ -80,17 +78,13 @@ III. Building the CKL Library
  library.  Type 'make' to create a 'libCKL.a' in the lib directory.
  The compiler is currently set to g++ with -O2 level optimization. 
 
- In Visual C++ 5.0 or higher, open CKL.dsw to build the library.
-
  Building on either platform has a side effect of copying the include
  files needed for a client application to the include/ directory.  
 
 IV. Building the Demos
 
  In the demos directory is a Unix Makefile.  Typing 'make' will perform a
- 'make' in the 'sample' and 'spinning' directories.  For VC++5.0
- users, the demos directory contains a demos.dsw file which contains
- projects for both demos.
+ 'make' in the 'sample' and 'spinning' directories.  
 
    sample
 

@@ -45,9 +45,10 @@
 using namespace CKL;
 
 #define PI 3.14159265359
-#define LISTS 0
+#define LISTS 1
 
-main()
+
+int main()
 {
   // initialize CKL model pointers
 
@@ -229,7 +230,7 @@ main()
          "with tolerance %lf\n", tolerance);
   printf("Num BV tests: %d\n", tres.NumBVTests());
   printf("Num Tri tests: %d\n", tres.NumTriTests());
-  printf("Closer than tolerance? ",tolerance);
+  printf("Closer than tolerance %lf? ",tolerance);
   if (tres.CloserThanTolerance()) printf("yes.\n"); else printf("no.\n");
 
   tolerance = (CKL_REAL).40;
@@ -239,7 +240,7 @@ main()
          "with tolerance %lf\n", tolerance);
   printf("Num BV tests: %d\n", tres.NumBVTests());
   printf("Num Tri tests: %d\n", tres.NumTriTests());
-  printf("Closer than tolerance? ",tolerance);
+  printf("Closer than tolerance %lf? ",tolerance);
   if (tres.CloserThanTolerance()) printf("yes.\n"); else printf("no.\n");
 
   // by moving one of the tori closer to the other, they
@@ -283,7 +284,7 @@ main()
          "with tolerance %lf\n", tolerance);
   printf("Num BV tests: %d\n", tres.NumBVTests());
   printf("Num Tri tests: %d\n", tres.NumTriTests());
-  printf("Closer than tolerance? ",tolerance);
+  printf("Closer than tolerance %lf? ",tolerance);
   if (tres.CloserThanTolerance()) printf("yes.\n"); else printf("no.\n");
 
   tolerance = (CKL_REAL)0.00005;
@@ -293,7 +294,7 @@ main()
          "with tolerance %lf\n", tolerance);
   printf("Num BV tests: %d\n", tres.NumBVTests());
   printf("Num Tri tests: %d\n", tres.NumTriTests());
-  printf("Closer than tolerance? ",tolerance);
+  printf("Closer than tolerance %lf? ",tolerance);
   if (tres.CloserThanTolerance()) printf("yes.\n"); else printf("no.\n");
 
   delete b1;

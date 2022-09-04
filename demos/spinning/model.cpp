@@ -39,7 +39,7 @@
 \**************************************************************************/
 
 #include <cmath>
-#include "GL/glut.h"
+#include <GLUT/glut.h>
 #include "model.h"
 #include "MatVec.h"
 #include <fstream>
